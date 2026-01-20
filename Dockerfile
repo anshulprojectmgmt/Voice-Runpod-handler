@@ -5,7 +5,7 @@ ENV TZ=Etc/UTC
 
 WORKDIR /app
 
-# System deps (audio + git)
+# System deps
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     sox \
@@ -13,11 +13,12 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Python deps
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# 🔥 FORCE pip ↔ python consistency
+RUN python -m pip install --upgrade pip
 
-# Copy handler + chatterbox
+COPY requirements.txt .
+RUN python -m pip install --no-cache-dir -r requirements.txt
+
 COPY . .
 
 CMD ["python", "handler.py"]
