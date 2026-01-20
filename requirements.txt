@@ -1,8 +1,23 @@
+ 
+ 
+ 
+ 
+
+# 🔥 RunPod SDK (REQUIRED)
+runpod
+
+# Core ML
 torch
 torchaudio
 numpy
-requests
-python-dotenv
-huggingface_hub
+
+# Audio
 soundfile
 librosa
+
+# Networking / utils
+requests
+python-dotenv
+
+# HuggingFace (used by chatterbox)
+huggingface_hub
