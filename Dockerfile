@@ -1,12 +1,12 @@
-FROM runpod/pytorch:2.0.1-cuda11.8-runtime
+FROM runpod/pytorch:2.0.1-cuda11.8-runtime-ubuntu20.04
 
-# 🔥 FIX: Disable interactive prompts (tzdata issue)
+# 🔥 Prevent tzdata interactive prompt
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
 WORKDIR /app
 
-# System dependencies
+# System dependencies for audio
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     sox \
@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy code
+# Copy handler code
 COPY . .
 
 CMD ["python", "handler.py"]
