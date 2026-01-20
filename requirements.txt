@@ -1,5 +1,6 @@
-torch
+ torch
 torchaudio
 numpy
-chatterbox-tts
 runpod
+perth
+chatterbox-tts

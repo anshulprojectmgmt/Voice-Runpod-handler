@@ -1,11 +1,10 @@
-
-import runpod
+ import runpod
 import torch
 import torchaudio
 import base64
 import io
 import os
-import numpy as np
+import json
 from chatterbox.tts import ChatterboxTTS
 
 tts_model = None
@@ -21,12 +20,12 @@ def load_model():
     return tts_model
 
 
-def decode_audio(b64_audio: str) -> str:
+def save_ref_audio(b64_audio: str) -> str:
     audio_bytes = base64.b64decode(b64_audio)
-    temp_path = "/tmp/ref.wav"
-    with open(temp_path, "wb") as f:
+    path = "/tmp/ref.wav"
+    with open(path, "wb") as f:
         f.write(audio_bytes)
-    return temp_path
+    return path
 
 
 def handler(job):
@@ -36,48 +35,48 @@ def handler(job):
 
         model = load_model()
 
-        # ----------------------------------
-        # TASK 1: EXTRACT SPEAKER EMBEDDING
-        # ----------------------------------
+        # -------------------------------------------------
+        # 1️⃣ EXTRACT + CACHE CONDITIONING (VOICE UPLOAD)
+        # -------------------------------------------------
         if task == "extract_embedding":
             ref_audio_b64 = inp.get("ref_audio_b64")
+            exaggeration = inp.get("exaggeration", 0.5)
+
             if not ref_audio_b64:
                 return {"error": "ref_audio_b64 missing"}
 
-            wav_path = decode_audio(ref_audio_b64)
+            wav_path = save_ref_audio(ref_audio_b64)
 
-            embedding = model.extract_speaker_embedding(wav_path)
+            # 🔥 Correct Chatterbox API
+            model.prepare_conditionals(
+                wav_path,
+                exaggeration=exaggeration
+            )
+
+            conds = model.conds
 
             os.remove(wav_path)
 
             return {
-                "speaker_embedding": embedding.tolist(),
-                "embedding_dim": len(embedding)
+                "conds": conds,   # FULL conditioning dict
+                "cached": True
             }
 
-        # ----------------------------------
-        # TASK 2: TTS WITH EMBEDDING
-        # ----------------------------------
+        # -------------------------------------------------
+        # 2️⃣ TTS USING CACHED CONDITIONING
+        # -------------------------------------------------
         elif task == "tts_with_embedding":
             text = inp.get("text")
-            embedding = inp.get("speaker_embedding")
+            conds = inp.get("conds")
 
-            if not text or embedding is None:
-                return {"error": "text or speaker_embedding missing"}
-
-            exaggeration = inp.get("exaggeration", 0.5)
             temperature = inp.get("temperature", 0.8)
             cfg_weight = inp.get("cfg_weight", 0.5)
 
-            # Rebuild conditionals using embedding
-            embedding_tensor = torch.tensor(
-                embedding, dtype=torch.float32
-            ).unsqueeze(0).to(model.device)
+            if not text or not conds:
+                return {"error": "text or conds missing"}
 
-            model.conds.t3.speaker_emb = embedding_tensor
-            model.conds.t3.emotion_adv = exaggeration * torch.ones(
-                1, 1, 1, device=model.device
-            )
+            # 🔥 SAFE: restore conditionals
+            model.conds = conds
 
             wav = model.generate(
                 text,
