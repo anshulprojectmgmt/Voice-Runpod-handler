@@ -1,6 +1,7 @@
- torch
+torch
 torchaudio
 numpy
 runpod
 perth
-chatterbox-tts
+soundfile
+librosa
