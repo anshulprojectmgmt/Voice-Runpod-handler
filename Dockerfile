@@ -5,7 +5,7 @@ ENV TZ=Etc/UTC
 
 WORKDIR /app
 
-# System deps
+# System deps (audio + git)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     sox \
@@ -13,12 +13,14 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# 🔥 FORCE pip ↔ python consistency
-RUN python -m pip install --upgrade pip
+# Python deps - install runpod first
+RUN pip install --no-cache-dir runpod
 
+# Then install other requirements
 COPY requirements.txt .
-RUN python -m pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy handler + chatterbox
 COPY . .
 
 CMD ["python", "handler.py"]

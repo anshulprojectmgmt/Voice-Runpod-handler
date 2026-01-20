@@ -5,13 +5,25 @@ Supports:
 2) TTS generation using cached embeddings
 """
 
-import runpod
-import torch
-import torchaudio
 import base64
 import io
 import json
 import os
+import sys
+
+# Try to import runpod, but handle the case where it might not be installed yet
+try:
+    import runpod
+except ImportError:
+    # If runpod is not installed, install it and restart
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "runpod"])
+    # Restart the script with the new module
+    os.execl(sys.executable, sys.executable, *sys.argv)
+
+# Now we can safely import the rest
+import torch
+import torchaudio
 from chatterbox.tts import ChatterboxTTS
 
 MODEL = None
