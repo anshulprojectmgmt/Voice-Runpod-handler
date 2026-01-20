@@ -1,12 +1,11 @@
-FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+ FROM runpod/pytorch:2.0.1-cuda11.8-runtime
 
-# Prevent tzdata & interactive prompts
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
 WORKDIR /app
 
-# System dependencies (audio + git only)
+# System deps (audio + git)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     sox \
@@ -14,14 +13,11 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip
-RUN python3 -m pip install --upgrade pip
-
-# Python dependencies
+# Python deps
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application
+# Copy code
 COPY . .
 
-CMD ["python3", "handler.py"]
+CMD ["python", "handler.py"]
