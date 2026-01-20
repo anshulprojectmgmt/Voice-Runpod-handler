@@ -1,21 +1,25 @@
- FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
+FROM runpod/pytorch:2.0.1-cuda11.8-runtime
+
+# 🔥 FIX: Disable interactive prompts (tzdata issue)
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
 
 WORKDIR /app
 
 # System dependencies
 RUN apt-get update && apt-get install -y \
     ffmpeg \
-    git \
     sox \
+    libgl1 \
+    libglib2.0-0 \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
-# Python dependencies
+# Python deps
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy handler and chatterbox
-COPY handler.py .
-COPY chatterbox ./chatterbox
+# Copy code
+COPY . .
 
-# RunPod entry
-CMD ["python", "-u", "handler.py"]
+CMD ["python", "handler.py"]
