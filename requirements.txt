@@ -1,6 +1,8 @@
-numpy==1.24.3
-soundfile==0.12.1
-librosa==0.10.1
-requests==2.31.0
-python-dotenv==1.0.0
-huggingface-hub==0.20.3
+ runpod
+torch
+torchaudio
+numpy
+soundfile
+librosa
+huggingface_hub
+requests
