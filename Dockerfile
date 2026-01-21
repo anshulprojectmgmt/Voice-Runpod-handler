@@ -1,13 +1,14 @@
- FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu20.04
+FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
 WORKDIR /app
 
-# System deps
+# ---------- SYSTEM ----------
 RUN apt-get update && apt-get install -y \
-    python3 \
+    python3.10 \
+    python3.10-distutils \
     python3-pip \
     ffmpeg \
     sox \
@@ -15,16 +16,18 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip
-RUN python3 -m pip install --upgrade pip setuptools wheel
+# ---------- FORCE PYTHON 3.10 ----------
+RUN ln -sf /usr/bin/python3.10 /usr/bin/python
+RUN python --version
 
-# Install deps (🔥 legacy resolver avoids conflict)
+# ---------- PIP ----------
+RUN python -m pip install --upgrade pip
+
+# ---------- DEPENDENCIES ----------
 COPY requirements.txt .
-RUN python3 -m pip install --no-cache-dir \
-    --use-deprecated=legacy-resolver \
-    -r requirements.txt
+RUN python -m pip install --no-cache-dir -r requirements.txt
 
-# Copy handler
+# ---------- HANDLER ----------
 COPY handler.py .
 
-CMD ["python3", "handler.py"]
+CMD ["python", "handler.py"]

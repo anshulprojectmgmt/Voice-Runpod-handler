@@ -1,26 +1,17 @@
- # RunPod SDK
-runpod==1.6.2
-
-# Torch (CUDA 11.8 compatible)
-torch==2.0.1
-torchaudio==2.0.2
+# RunPod
+runpod
 
 # Core
-numpy==1.26.4
+numpy>=1.24,<1.26
+requests
+python-dotenv
 
 # Audio
-soundfile==0.12.1
-librosa==0.10.1
+soundfile
+librosa
 
-# Utils
-requests==2.31.0
-python-dotenv==1.0.1
-
-# HuggingFace
-huggingface_hub==0.20.3
+# ML (Torch is pulled by chatterbox)
+huggingface_hub
 
 # 🔥 Chatterbox (official)
 git+https://github.com/resemble-ai/chatterbox.git
-
- 
- 

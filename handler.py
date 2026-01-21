@@ -3,10 +3,7 @@ import torch
 import torchaudio
 import base64
 import io
-import os
-
 from chatterbox.tts import ChatterboxTTS
-
 
 MODEL = None
 
@@ -15,9 +12,9 @@ def load_model():
     global MODEL
     if MODEL is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"[INFO] Loading Chatterbox on {device}")
+        print(f"[RunPod] Loading Chatterbox on {device}")
         MODEL = ChatterboxTTS.from_pretrained(device=device)
-        print("[INFO] Model loaded")
+        print("[RunPod] Model loaded")
     return MODEL
 
 
@@ -29,13 +26,13 @@ def decode_audio(b64_audio: str, path="/tmp/ref.wav"):
 
 
 def handler(job):
+    data = job["input"]
+    task = data.get("task")
     model = load_model()
-    inp = job["input"]
-    task = inp.get("task")
 
     # 1️⃣ Extract speaker embedding
     if task == "extract_embedding":
-        audio_path = decode_audio(inp["audio_b64"])
+        audio_path = decode_audio(data["audio_b64"])
         model.prepare_conditionals(audio_path, exaggeration=0.3)
 
         speaker_embedding = {
@@ -47,8 +44,8 @@ def handler(job):
 
     # 2️⃣ TTS with embedding
     if task == "tts":
-        text = inp["text"]
-        conds = inp["speaker_embedding"]
+        text = data["text"]
+        conds = data["speaker_embedding"]
 
         model.conds = {
             k: torch.tensor(v).to(model.device)
@@ -57,8 +54,8 @@ def handler(job):
 
         wav = model.generate(
             text,
-            temperature=inp.get("temperature", 0.6),
-            cfg_weight=inp.get("cfg_weight", 0.3),
+            temperature=data.get("temperature", 0.6),
+            cfg_weight=data.get("cfg_weight", 0.3),
         )
 
         buffer = io.BytesIO()
