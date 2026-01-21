@@ -3,29 +3,18 @@ import torch
 import torchaudio
 import base64
 import io
-import os
-import json
 from chatterbox.tts import ChatterboxTTS
 
-# Load model once per container
 MODEL = None
-
 
 def load_model():
     global MODEL
     if MODEL is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"[RunPod] Loading Chatterbox on {device}")
+        print(f"Loading Chatterbox on {device}")
         MODEL = ChatterboxTTS.from_pretrained(device=device)
-        print("[RunPod] Model loaded")
+        print("Model loaded")
     return MODEL
-
-
-def decode_audio(b64_audio: str, path="/tmp/ref.wav"):
-    audio_bytes = base64.b64decode(b64_audio)
-    with open(path, "wb") as f:
-        f.write(audio_bytes)
-    return path
 
 
 def handler(job):
@@ -34,43 +23,32 @@ def handler(job):
         data = job["input"]
         task = data.get("task")
 
-        # --------------------------------------------------
-        # 1️⃣ EXTRACT SPEAKER EMBEDDING
-        # --------------------------------------------------
+        # 1️⃣ Extract embedding
         if task == "extract_embedding":
-            ref_audio_b64 = data.get("ref_audio_b64")
-            if not ref_audio_b64:
-                return {"error": "ref_audio_b64 missing"}
+            audio_b64 = data["audio_b64"]
+            audio_bytes = base64.b64decode(audio_b64)
 
-            wav_path = decode_audio(ref_audio_b64)
+            path = "/tmp/ref.wav"
+            with open(path, "wb") as f:
+                f.write(audio_bytes)
 
-            # Prepare conditionals
-            model.prepare_conditionals(wav_path, exaggeration=0.3)
+            model.prepare_conditionals(path, exaggeration=0.3)
 
-            # Serialize conditionals
-            speaker_embedding = {
+            embedding = {
                 k: v.cpu().numpy().tolist()
                 for k, v in model.conds.items()
             }
 
-            return {
-                "speaker_embedding": speaker_embedding
-            }
+            return {"speaker_embedding": embedding}
 
-        # --------------------------------------------------
-        # 2️⃣ TTS WITH SPEAKER EMBEDDING
-        # --------------------------------------------------
+        # 2️⃣ TTS with embedding
         if task == "tts":
-            text = data.get("text")
-            speaker_embedding = data.get("speaker_embedding")
+            text = data["text"]
+            conds = data["speaker_embedding"]
 
-            if not text or not speaker_embedding:
-                return {"error": "text or speaker_embedding missing"}
-
-            # Restore tensors
             model.conds = {
                 k: torch.tensor(v).to(model.device)
-                for k, v in speaker_embedding.items()
+                for k, v in conds.items()
             }
 
             wav = model.generate(
@@ -88,7 +66,7 @@ def handler(job):
                 "sample_rate": model.sr
             }
 
-        return {"error": f"Invalid task: {task}"}
+        return {"error": "Invalid task"}
 
     except Exception as e:
         import traceback
