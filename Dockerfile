@@ -1,4 +1,4 @@
-FROM runpod/pytorch:2.1.0-py3.10-cuda11.8
+FROM runpod/pytorch:2.0.1-py3.10-cuda11.8-runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# 🔥 FORCE pip ↔ python consistency
+# 🔥 Python / pip consistency (CRITICAL)
 RUN python -m pip install --upgrade pip
 
 COPY requirements.txt .
