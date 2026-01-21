@@ -4,7 +4,7 @@ torchaudio==2.0.2+cu118
 --extra-index-url https://download.pytorch.org/whl/cu118
  
 
-# RunPod SDK (REQUIRED)
+ 
 runpod
 
 # PyTorch will already be available via CUDA image
