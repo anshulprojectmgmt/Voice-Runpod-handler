@@ -1,102 +1,89 @@
 """
-RunPod Serverless Handler for Chatterbox
-Supports:
-1) Speaker embedding extraction
-2) TTS generation using cached embeddings
+RunPod Serverless Handler
+Embedding-based Chatterbox TTS inference
 """
 
-import base64
-import io
-import json
-import os
-import sys
-
-# Try to import runpod, but handle the case where it might not be installed yet
-try:
-    import runpod
-except ImportError:
-    # If runpod is not installed, install it and restart
-    import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "runpod"])
-    # Restart the script with the new module
-    os.execl(sys.executable, sys.executable, *sys.argv)
-
-# Now we can safely import the rest
+import runpod
 import torch
 import torchaudio
-from chatterbox.tts import ChatterboxTTS
+import base64
+import io
+from chatterbox.tts import ChatterboxTTS, Conditionals, T3Cond
 
-MODEL = None
+# Global model (loaded once per container)
+tts_model = None
 
 
 def load_model():
-    global MODEL
-    if MODEL is None:
+    global tts_model
+    if tts_model is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        MODEL = ChatterboxTTS.from_pretrained(device=device)
-    return MODEL
-
-
-def decode_audio(b64_audio: str, path="/tmp/ref.wav"):
-    audio_bytes = base64.b64decode(b64_audio)
-    with open(path, "wb") as f:
-        f.write(audio_bytes)
-    return path
+        print(f"Loading Chatterbox TTS on {device}")
+        tts_model = ChatterboxTTS.from_pretrained(device=device)
+        print("Model loaded")
+    return tts_model
 
 
 def handler(job):
-    model = load_model()
-    data = job["input"]
-    task = data.get("task")
+    try:
+        job_input = job["input"]
 
-    # ----------------------------
-    # 1️⃣ EXTRACT SPEAKER EMBEDDING
-    # ----------------------------
-    if task == "extract_embedding":
-        audio_path = decode_audio(data["audio_b64"])
+        if job_input.get("task") != "tts":
+            return {"error": "Invalid task"}
 
-        # Prepare conditionals once
-        model.prepare_conditionals(audio_path, exaggeration=0.3)
+        text = job_input.get("text")
+        conds_b64 = job_input.get("speaker_embedding_b64")
+        temperature = job_input.get("temperature", 0.6)
+        cfg_weight = job_input.get("cfg_weight", 0.3)
 
-        # Convert tensors → JSON-safe
-        speaker_embedding = {
-            k: v.cpu().numpy().tolist()
-            for k, v in model.conds.items()
+        if not text or not conds_b64:
+            return {"error": "Missing text or speaker embedding"}
+
+        model = load_model()
+
+        # -------------------------------
+        # Decode speaker embedding
+        # -------------------------------
+        buffer = io.BytesIO(base64.b64decode(conds_b64))
+        payload = torch.load(buffer, map_location=model.device)
+
+        t3_cond = T3Cond(**payload["t3"]).to(model.device)
+        gen_dict = {
+            k: v.to(model.device) if torch.is_tensor(v) else v
+            for k, v in payload["gen"].items()
         }
 
-        return {
-            "speaker_embedding": speaker_embedding
-        }
-
-    # ----------------------------
-    # 2️⃣ TEXT TO SPEECH
-    # ----------------------------
-    if task == "tts":
-        text = data["text"]
-        conds = data["speaker_embedding"]
-
-        # Restore tensors
-        model.conds = {
-            k: torch.tensor(v).to(model.device)
-            for k, v in conds.items()
-        }
-
-        wav = model.generate(
-            text,
-            temperature=data.get("temperature", 0.6),
-            cfg_weight=data.get("cfg_weight", 0.3),
+        model.conds = Conditionals(
+            t3=t3_cond,
+            gen=gen_dict
         )
 
-        buffer = io.BytesIO()
-        torchaudio.save(buffer, wav.cpu(), model.sr, format="wav")
-        buffer.seek(0)
+        # -------------------------------
+        # Generate audio
+        # -------------------------------
+        with torch.inference_mode():
+            wav = model.generate(
+                text=text,
+                temperature=temperature,
+                cfg_weight=cfg_weight,
+            )
+
+        # Convert to WAV bytes
+        out_buf = io.BytesIO()
+        torchaudio.save(out_buf, wav.cpu(), model.sr, format="wav")
+        out_buf.seek(0)
+
+        audio_b64 = base64.b64encode(out_buf.read()).decode("utf-8")
 
         return {
-            "audio_b64": base64.b64encode(buffer.read()).decode(),
+            "audio_b64": audio_b64,
             "sample_rate": model.sr,
         }
 
-    return {"error": "Invalid task type"}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
 
 
 runpod.serverless.start({"handler": handler})
