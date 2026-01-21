@@ -1,24 +1,22 @@
- 
-torc 
-torchaudio 
- 
+# Core ML
+torch==2.1.0
+torchaudio==2.1.0
+
+# RunPod (MUST COME AFTER TORCH)
+runpod==1.14.0
+
+# Audio processing
+numpy==1.24.3
+soundfile==0.12.1
+librosa==0.10.1
+
+# Network & utils
+requests==2.31.0
+python-dotenv==1.0.0
+
+# HuggingFace
+huggingface-hub==0.20.3
 
  
-runpod
-
-# PyTorch will already be available via CUDA image
-numpy
-
-# Audio
-soundfile
-librosa
-
-# Networking
-requests
-python-dotenv
-
-# HuggingFace (required by Chatterbox)
-huggingface_hub
-
 # 🔥 Chatterbox (OFFICIAL REPO)
 git+https://github.com/resemble-ai/chatterbox.git
