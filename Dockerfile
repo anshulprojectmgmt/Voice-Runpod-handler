@@ -1,11 +1,9 @@
-FROM runpod/base:0.4.0-cuda11.8.0
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
-WORKDIR /app
-
-# Install system dependencies
+# Install Python
 RUN apt-get update && apt-get install -y \
     python3.10 \
     python3-pip \
@@ -18,17 +16,24 @@ RUN apt-get update && apt-get install -y \
 
 # Set Python 3.10 as default
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
+RUN ln -s /usr/bin/python3 /usr/bin/python
 
-# Upgrade pip
-RUN python3 -m pip install --upgrade pip
+WORKDIR /app
 
-# Install PyTorch with CUDA 11.8
-RUN pip3 install torch==2.1.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu118
+# Install PyTorch with CUDA 12.1 FIRST
+RUN pip3 install --no-cache-dir \
+    torch==2.1.0 \
+    torchaudio==2.1.0 \
+    --index-url https://download.pytorch.org/whl/cu121
 
-# Install requirements
+# Install runpod
+RUN pip3 install --no-cache-dir runpod==1.14.0
+
+# Install other requirements
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
+# Copy all files
 COPY . .
 
 CMD ["python3", "handler.py"]
