@@ -1,5 +1,5 @@
-FROM runpod/pytorch:2.0.1-py3.10-cuda11.8-runtime
-
+ 
+FROM runpod/pytorch:2.2.0-py3.10-cuda12.1.1-devel-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
