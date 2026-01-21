@@ -1,22 +1,6 @@
- 
- 
- 
- 
-
-# 🔥 RunPod SDK (REQUIRED)
-runpod
-
-# Core ML
- 
-numpy
-
-# Audio
-soundfile
-librosa
-
-# Networking / utils
-requests
-python-dotenv
-
-# HuggingFace (used by chatterbox)
-huggingface_hub
+numpy==1.24.3
+soundfile==0.12.1
+librosa==0.10.1
+requests==2.31.0
+python-dotenv==1.0.0
+huggingface-hub==0.20.3
