@@ -5,7 +5,7 @@ ENV TZ=Etc/UTC
 
 WORKDIR /app
 
-# System deps
+# System dependencies
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
@@ -15,17 +15,14 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Make python available as `python`
-RUN ln -s /usr/bin/python3 /usr/bin/python
-
 # Upgrade pip
-RUN python -m pip install --upgrade pip
+RUN python3 -m pip install --upgrade pip
 
-# Install Python deps
+# Install Python dependencies
 COPY requirements.txt .
-RUN python -m pip install --no-cache-dir -r requirements.txt
+RUN python3 -m pip install --no-cache-dir -r requirements.txt
 
-# Copy code
+# Copy handler
 COPY handler.py .
 
-CMD ["python", "handler.py"]
+CMD ["python3", "handler.py"]
