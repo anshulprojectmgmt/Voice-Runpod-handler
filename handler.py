@@ -1,4 +1,4 @@
-import runpod
+ import runpod
 import torch
 import torchaudio
 import base64
@@ -40,24 +40,22 @@ def handler(job):
 
         audio_path = decode_audio(audio_b64)
 
-        # Prepare conditionals
-        model.prepare_conditionals(audio_path, exaggeration=0.3)
+        # 🔥 IMPORTANT: low exaggeration = clean voice
+        model.prepare_conditionals(audio_path, exaggeration=0.1)
 
-        # ✅ Serialize correctly
+        # ✅ CORRECT serialization (NO .items() on Conditionals)
         speaker_embedding = {
             "t3": {
-                "speaker_emb": model.conds.t3.speaker_emb.detach().cpu().numpy().tolist(),
-                "emotion_adv": model.conds.t3.emotion_adv.detach().cpu().numpy().tolist(),
+                "speaker_emb": model.conds.t3.speaker_emb.detach().cpu().tolist(),
+                "emotion_adv": model.conds.t3.emotion_adv.detach().cpu().tolist(),
             },
             "gen": {
-                k: (v.detach().cpu().numpy().tolist() if torch.is_tensor(v) else v)
+                k: (v.detach().cpu().tolist() if torch.is_tensor(v) else v)
                 for k, v in model.conds.gen.items()
             }
         }
 
-        return {
-            "speaker_embedding": speaker_embedding
-        }
+        return {"speaker_embedding": speaker_embedding}
 
     # ================================
     # 2️⃣ TTS USING EMBEDDING
@@ -69,18 +67,22 @@ def handler(job):
         if not text or not embedding:
             return {"error": "text or speaker_embedding missing"}
 
-        # Restore conditionals
+        # 🔥 CORRECT reconstruction (THIS FIXES FAST / NOISY SPEECH)
         model.conds = Conditionals(
             t3=T3Cond(
                 speaker_emb=torch.tensor(
-                    embedding["t3"]["speaker_emb"], dtype=torch.float32
-                ).to(model.device),
+                    embedding["t3"]["speaker_emb"],
+                    dtype=torch.float32,
+                    device=model.device
+                ),
                 emotion_adv=torch.tensor(
-                    embedding["t3"]["emotion_adv"], dtype=torch.float32
-                ).to(model.device),
+                    embedding["t3"]["emotion_adv"],
+                    dtype=torch.float32,
+                    device=model.device
+                ),
             ),
             gen={
-                k: torch.tensor(v).to(model.device) if isinstance(v, list) else v
+                k: torch.tensor(v, device=model.device) if isinstance(v, list) else v
                 for k, v in embedding["gen"].items()
             }
         )
@@ -88,9 +90,12 @@ def handler(job):
         with torch.inference_mode():
             wav = model.generate(
                 text=text,
-                temperature=data.get("temperature", 0.6),
-                cfg_weight=data.get("cfg_weight", 0.3),
+                temperature=data.get("temperature", 0.3),  # 🔥 slower
+                cfg_weight=data.get("cfg_weight", 1.1),    # 🔥 natural pacing
             )
+
+        # 🔥 NORMALIZATION (removes clipping & distortion)
+        wav = wav / wav.abs().max().clamp(min=1e-6)
 
         buffer = io.BytesIO()
         torchaudio.save(buffer, wav.cpu(), model.sr, format="wav")
