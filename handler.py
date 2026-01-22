@@ -36,8 +36,8 @@ def handler(job):
         with open("/tmp/ref.wav", "wb") as f:
             f.write(audio_bytes)
 
-        # LOW exaggeration = clean base voice
-        model.prepare_conditionals("/tmp/ref.wav", exaggeration=0.5)
+        # 🔥 IMPORTANT: keep exaggeration LOW for clean voice
+        model.prepare_conditionals("/tmp/ref.wav", exaggeration=0.3)
 
         speaker_embedding = {
             "t3": {
@@ -53,22 +53,20 @@ def handler(job):
         return {"speaker_embedding": speaker_embedding}
 
     # ===============================
-    # 2️⃣ TTS — SINGLE GENERATION (FIXED)
+    # 2️⃣ TTS — SINGLE TEXT (FINAL)
     # ===============================
     elif task == "tts":
-        text_chunks = data.get("text_chunks")
+        text = data.get("text")
         embedding = data.get("speaker_embedding")
 
-        if not text_chunks or not embedding:
-            return {"error": "text_chunks or speaker_embedding missing"}
+        if not text or not embedding:
+            return {"error": "text or speaker_embedding missing"}
 
-        # 🔥 JOIN CHUNKS INTO ONE TEXT (CRITICAL FIX)
-        full_text = " ".join(t.strip() for t in text_chunks if t.strip())
+        text = text.strip()
+        if not text:
+            return {"error": "Empty text"}
 
-        if not full_text:
-            return {"error": "Empty text after joining chunks"}
-
-        # Restore conditioning
+        # ✅ Restore conditioning EXACTLY
         model.conds = Conditionals(
             t3=T3Cond(
                 speaker_emb=torch.tensor(
@@ -88,19 +86,26 @@ def handler(job):
             },
         )
 
-        # 🔥 SINGLE GENERATION CALL (NO LOOP)
+        # 🔥 SINGLE GENERATION CALL (NO LOOP, NO CHUNKS)
         with torch.inference_mode():
             wav = model.generate(
-                text=full_text,
+                text=text,
                 temperature=data.get("temperature", 0.8),
-                cfg_weight=data.get("cfg_weight", 0.5),
+                cfg_weight=data.get("cfg_weight", 1.05),
             )
 
+        # Normalize safely
         wav = wav.squeeze(0)
         wav = wav / wav.abs().max().clamp(min=1e-6)
 
         buffer = io.BytesIO()
-        sf.write(buffer, wav.cpu().numpy(), model.sr, format="WAV", subtype="PCM_16")
+        sf.write(
+            buffer,
+            wav.cpu().numpy(),
+            model.sr,
+            format="WAV",
+            subtype="PCM_16",
+        )
         buffer.seek(0)
 
         return {
@@ -108,6 +113,9 @@ def handler(job):
             "sample_rate": model.sr,
         }
 
+    # ===============================
+    # INVALID TASK
+    # ===============================
     else:
         return {"error": f"Invalid task: {task}"}
 
