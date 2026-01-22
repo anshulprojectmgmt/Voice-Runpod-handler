@@ -20,30 +20,22 @@ def load_model():
     return MODEL
 
 
-def decode_audio(b64_audio: str, path="/tmp/ref.wav"):
-    audio_bytes = base64.b64decode(b64_audio)
-    with open(path, "wb") as f:
-        f.write(audio_bytes)
-    return path
-
-
 def handler(job):
     data = job["input"]
     task = data.get("task")
     model = load_model()
 
-    # ================================
+    # ===============================
     # 1️⃣ EXTRACT SPEAKER EMBEDDING
-    # ================================
+    # ===============================
     if task == "extract_embedding":
-        audio_b64 = data.get("audio_b64") or data.get("ref_audio_b64")
-        if not audio_b64:
-            return {"error": "audio_b64 missing"}
+        audio_b64 = data.get("audio_b64")
+        audio_bytes = base64.b64decode(audio_b64)
 
-        audio_path = decode_audio(audio_b64)
+        with open("/tmp/ref.wav", "wb") as f:
+            f.write(audio_bytes)
 
-        # ✅ LOW exaggeration = clean base voice
-        model.prepare_conditionals(audio_path, exaggeration=0.1)
+        model.prepare_conditionals("/tmp/ref.wav", exaggeration=0.1)
 
         speaker_embedding = {
             "t3": {
@@ -58,29 +50,20 @@ def handler(job):
 
         return {"speaker_embedding": speaker_embedding}
 
-    # ================================
-    # 2️⃣ TTS USING EMBEDDING
-    # ================================
+    # ===============================
+    # 2️⃣ TTS (CHUNKED – FIXED)
+    # ===============================
     elif task == "tts":
-        text = data.get("text")
+        text_chunks = data.get("text_chunks")
         embedding = data.get("speaker_embedding")
 
-        if not text or not embedding:
-            return {"error": "text or speaker_embedding missing"}
+        if not text_chunks or not embedding:
+            return {"error": "text_chunks or speaker_embedding missing"}
 
-        # ✅ RECONSTRUCT CONDITIONING (CORRECT)
         model.conds = Conditionals(
             t3=T3Cond(
-                speaker_emb=torch.tensor(
-                    embedding["t3"]["speaker_emb"],
-                    dtype=torch.float32,
-                    device=model.device
-                ),
-                emotion_adv=torch.tensor(
-                    embedding["t3"]["emotion_adv"],
-                    dtype=torch.float32,
-                    device=model.device
-                ),
+                speaker_emb=torch.tensor(embedding["t3"]["speaker_emb"], device=model.device),
+                emotion_adv=torch.tensor(embedding["t3"]["emotion_adv"], device=model.device),
             ),
             gen={
                 k: torch.tensor(v, device=model.device) if isinstance(v, list) else v
@@ -88,43 +71,33 @@ def handler(job):
             }
         )
 
-        with torch.inference_mode():
-            wav = model.generate(
-                text=text,
-                temperature=data.get("temperature", 0.35),
-                cfg_weight=data.get("cfg_weight", 1.1),
-            )
+        wavs = []
 
-        # ================================
-        # 🔥 AUDIO FIX (CRITICAL)
-        # ================================
+        for text in text_chunks:
+            text = text.strip()
+            if not text:
+                continue
 
-        # Ensure shape [T]
-        if wav.ndim > 1:
+            with torch.inference_mode():
+                wav = model.generate(
+                    text=text,
+                    temperature=data.get("temperature", 0.25),
+                    cfg_weight=data.get("cfg_weight", 1.15),
+                    max_new_tokens=600,   # 🔥 PREVENT CUTOFF
+                )
+
             wav = wav.squeeze(0)
+            wav = wav / wav.abs().max().clamp(min=1e-6)
+            wavs.append(wav)
 
-        wav = wav.detach().cpu().numpy()
+            # 🔥 Natural pause
+            silence = torch.zeros(int(0.35 * model.sr), device=wav.device)
+            wavs.append(silence)
 
-        # Remove DC offset
-        wav = wav - np.mean(wav)
+        full_wav = torch.cat(wavs).cpu().numpy()
 
-        # RMS normalization (natural loudness)
-        rms = np.sqrt(np.mean(wav ** 2))
-        if rms > 0:
-            wav = wav / rms * 0.1
-
-        # Hard clip safety
-        wav = np.clip(wav, -1.0, 1.0)
-
-        # Encode WAV correctly
         buffer = io.BytesIO()
-        sf.write(
-            buffer,
-            wav,
-            model.sr,
-            format="WAV",
-            subtype="PCM_16"
-        )
+        sf.write(buffer, full_wav, model.sr, subtype="PCM_16")
         buffer.seek(0)
 
         return {
