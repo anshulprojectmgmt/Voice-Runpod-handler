@@ -1,8 +1,10 @@
 import runpod
 import torch
-import torchaudio
 import base64
 import io
+import numpy as np
+import soundfile as sf
+
 from chatterbox.tts import ChatterboxTTS, Conditionals, T3Cond
 
 MODEL = None
@@ -40,10 +42,9 @@ def handler(job):
 
         audio_path = decode_audio(audio_b64)
 
-        # 🔥 IMPORTANT: low exaggeration = clean voice
+        # ✅ LOW exaggeration = clean base voice
         model.prepare_conditionals(audio_path, exaggeration=0.1)
 
-        # ✅ CORRECT serialization (NO .items() on Conditionals)
         speaker_embedding = {
             "t3": {
                 "speaker_emb": model.conds.t3.speaker_emb.detach().cpu().tolist(),
@@ -67,7 +68,7 @@ def handler(job):
         if not text or not embedding:
             return {"error": "text or speaker_embedding missing"}
 
-        # 🔥 CORRECT reconstruction (THIS FIXES FAST / NOISY SPEECH)
+        # ✅ RECONSTRUCT CONDITIONING (CORRECT)
         model.conds = Conditionals(
             t3=T3Cond(
                 speaker_emb=torch.tensor(
@@ -90,15 +91,40 @@ def handler(job):
         with torch.inference_mode():
             wav = model.generate(
                 text=text,
-                temperature=data.get("temperature", 0.3),  # 🔥 slower
-                cfg_weight=data.get("cfg_weight", 1.1),    # 🔥 natural pacing
+                temperature=data.get("temperature", 0.35),
+                cfg_weight=data.get("cfg_weight", 1.1),
             )
 
-        # 🔥 NORMALIZATION (removes clipping & distortion)
-        wav = wav / wav.abs().max().clamp(min=1e-6)
+        # ================================
+        # 🔥 AUDIO FIX (CRITICAL)
+        # ================================
 
+        # Ensure shape [T]
+        if wav.ndim > 1:
+            wav = wav.squeeze(0)
+
+        wav = wav.detach().cpu().numpy()
+
+        # Remove DC offset
+        wav = wav - np.mean(wav)
+
+        # RMS normalization (natural loudness)
+        rms = np.sqrt(np.mean(wav ** 2))
+        if rms > 0:
+            wav = wav / rms * 0.1
+
+        # Hard clip safety
+        wav = np.clip(wav, -1.0, 1.0)
+
+        # Encode WAV correctly
         buffer = io.BytesIO()
-        torchaudio.save(buffer, wav.cpu(), model.sr, format="wav")
+        sf.write(
+            buffer,
+            wav,
+            model.sr,
+            format="WAV",
+            subtype="PCM_16"
+        )
         buffer.seek(0)
 
         return {
@@ -106,9 +132,6 @@ def handler(job):
             "sample_rate": model.sr,
         }
 
-    # ================================
-    # INVALID TASK
-    # ================================
     else:
         return {"error": f"Invalid task: {task}"}
 
