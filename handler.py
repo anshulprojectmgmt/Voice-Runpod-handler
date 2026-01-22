@@ -83,7 +83,7 @@ def handler(job):
                     text=text,
                     temperature=data.get("temperature", 0.25),
                     cfg_weight=data.get("cfg_weight", 1.15),
-                    max_new_tokens=600,   # 🔥 PREVENT CUTOFF
+                   
                 )
 
             wav = wav.squeeze(0)
