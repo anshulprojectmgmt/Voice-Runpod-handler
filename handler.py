@@ -37,7 +37,7 @@ def handler(job):
             f.write(audio_bytes)
 
         # LOW exaggeration = clean base voice
-        model.prepare_conditionals("/tmp/ref.wav", exaggeration=0.1)
+        model.prepare_conditionals("/tmp/ref.wav", exaggeration=0.5)
 
         speaker_embedding = {
             "t3": {
@@ -92,8 +92,8 @@ def handler(job):
         with torch.inference_mode():
             wav = model.generate(
                 text=full_text,
-                temperature=data.get("temperature", 0.35),
-                cfg_weight=data.get("cfg_weight", 1.1),
+                temperature=data.get("temperature", 0.8),
+                cfg_weight=data.get("cfg_weight", 0.5),
             )
 
         wav = wav.squeeze(0)
