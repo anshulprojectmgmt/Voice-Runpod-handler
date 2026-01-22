@@ -2,7 +2,6 @@ import runpod
 import torch
 import base64
 import io
-import numpy as np
 import soundfile as sf
 
 from chatterbox.tts import ChatterboxTTS, Conditionals, T3Cond
@@ -30,11 +29,14 @@ def handler(job):
     # ===============================
     if task == "extract_embedding":
         audio_b64 = data.get("audio_b64")
-        audio_bytes = base64.b64decode(audio_b64)
+        if not audio_b64:
+            return {"error": "audio_b64 missing"}
 
+        audio_bytes = base64.b64decode(audio_b64)
         with open("/tmp/ref.wav", "wb") as f:
             f.write(audio_bytes)
 
+        # LOW exaggeration = clean base voice
         model.prepare_conditionals("/tmp/ref.wav", exaggeration=0.1)
 
         speaker_embedding = {
@@ -51,7 +53,7 @@ def handler(job):
         return {"speaker_embedding": speaker_embedding}
 
     # ===============================
-    # 2️⃣ TTS (CHUNKED – FIXED)
+    # 2️⃣ TTS — SINGLE GENERATION (FIXED)
     # ===============================
     elif task == "tts":
         text_chunks = data.get("text_chunks")
@@ -60,44 +62,45 @@ def handler(job):
         if not text_chunks or not embedding:
             return {"error": "text_chunks or speaker_embedding missing"}
 
+        # 🔥 JOIN CHUNKS INTO ONE TEXT (CRITICAL FIX)
+        full_text = " ".join(t.strip() for t in text_chunks if t.strip())
+
+        if not full_text:
+            return {"error": "Empty text after joining chunks"}
+
+        # Restore conditioning
         model.conds = Conditionals(
             t3=T3Cond(
-                speaker_emb=torch.tensor(embedding["t3"]["speaker_emb"], device=model.device),
-                emotion_adv=torch.tensor(embedding["t3"]["emotion_adv"], device=model.device),
+                speaker_emb=torch.tensor(
+                    embedding["t3"]["speaker_emb"],
+                    dtype=torch.float32,
+                    device=model.device,
+                ),
+                emotion_adv=torch.tensor(
+                    embedding["t3"]["emotion_adv"],
+                    dtype=torch.float32,
+                    device=model.device,
+                ),
             ),
             gen={
                 k: torch.tensor(v, device=model.device) if isinstance(v, list) else v
                 for k, v in embedding["gen"].items()
-            }
+            },
         )
 
-        wavs = []
+        # 🔥 SINGLE GENERATION CALL (NO LOOP)
+        with torch.inference_mode():
+            wav = model.generate(
+                text=full_text,
+                temperature=data.get("temperature", 0.35),
+                cfg_weight=data.get("cfg_weight", 1.1),
+            )
 
-        for text in text_chunks:
-            text = text.strip()
-            if not text:
-                continue
-
-            with torch.inference_mode():
-                wav = model.generate(
-                    text=text,
-                    temperature=data.get("temperature", 0.25),
-                    cfg_weight=data.get("cfg_weight", 1.15),
-                   
-                )
-
-            wav = wav.squeeze(0)
-            wav = wav / wav.abs().max().clamp(min=1e-6)
-            wavs.append(wav)
-
-            # 🔥 Natural pause
-            silence = torch.zeros(int(0.35 * model.sr), device=wav.device)
-            wavs.append(silence)
-
-        full_wav = torch.cat(wavs).cpu().numpy()
+        wav = wav.squeeze(0)
+        wav = wav / wav.abs().max().clamp(min=1e-6)
 
         buffer = io.BytesIO()
-        sf.write(buffer, full_wav, model.sr,format="WAV",subtype="PCM_16")
+        sf.write(buffer, wav.cpu().numpy(), model.sr, format="WAV", subtype="PCM_16")
         buffer.seek(0)
 
         return {
