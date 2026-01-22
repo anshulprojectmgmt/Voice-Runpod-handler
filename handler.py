@@ -97,7 +97,7 @@ def handler(job):
         full_wav = torch.cat(wavs).cpu().numpy()
 
         buffer = io.BytesIO()
-        sf.write(buffer, full_wav, model.sr, subtype="PCM_16")
+        sf.write(buffer, full_wav, model.sr,format="WAV",subtype="PCM_16")
         buffer.seek(0)
 
         return {
