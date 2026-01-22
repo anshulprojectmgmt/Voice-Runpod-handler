@@ -24,9 +24,9 @@ def handler(job):
     task = data.get("task")
     model = load_model()
 
-    # ======================================================
-    # 1️⃣ EXTRACT SPEAKER EMBEDDING (ONE-TIME ONLY)
-    # ======================================================
+    # ===============================
+    # 1️⃣ EXTRACT SPEAKER EMBEDDING
+    # ===============================
     if task == "extract_embedding":
         audio_b64 = data.get("audio_b64")
         if not audio_b64:
@@ -36,7 +36,7 @@ def handler(job):
         with open("/tmp/ref.wav", "wb") as f:
             f.write(audio_bytes)
 
-        # 🔥 LOW exaggeration = stable base voice
+        # 🔥 IMPORTANT: keep exaggeration LOW for clean voice
         model.prepare_conditionals("/tmp/ref.wav", exaggeration=0.3)
 
         speaker_embedding = {
@@ -47,14 +47,14 @@ def handler(job):
             "gen": {
                 k: (v.detach().cpu().tolist() if torch.is_tensor(v) else v)
                 for k, v in model.conds.gen.items()
-            },
+            }
         }
 
         return {"speaker_embedding": speaker_embedding}
 
-    # ======================================================
-    # 2️⃣ TTS — SINGLE TEXT (PRODUCTION SAFE)
-    # ======================================================
+    # ===============================
+    # 2️⃣ TTS — SINGLE TEXT (FINAL)
+    # ===============================
     elif task == "tts":
         text = data.get("text")
         embedding = data.get("speaker_embedding")
@@ -66,11 +66,7 @@ def handler(job):
         if not text:
             return {"error": "Empty text"}
 
-        # 🔥🔥🔥 CRITICAL FIX 🔥🔥🔥
-        # Reset ALL internal vocoder / pitch / cache state
-        model.reset()
-
-        # Restore conditioning CLEANLY
+        # ✅ Restore conditioning EXACTLY
         model.conds = Conditionals(
             t3=T3Cond(
                 speaker_emb=torch.tensor(
@@ -90,15 +86,15 @@ def handler(job):
             },
         )
 
-        # 🔥 SINGLE GENERATION (NO LOOPS, NO REUSE)
+        # 🔥 SINGLE GENERATION CALL (NO LOOP, NO CHUNKS)
         with torch.inference_mode():
             wav = model.generate(
                 text=text,
-                temperature=data.get("temperature", 0.45),
-                cfg_weight=data.get("cfg_weight", 0.55),
+                temperature=data.get("temperature", 0.8),
+                cfg_weight=data.get("cfg_weight", 1.05),
             )
 
-        # Safe normalization
+        # Normalize safely
         wav = wav.squeeze(0)
         wav = wav / wav.abs().max().clamp(min=1e-6)
 
@@ -117,9 +113,9 @@ def handler(job):
             "sample_rate": model.sr,
         }
 
-    # ======================================================
+    # ===============================
     # INVALID TASK
-    # ======================================================
+    # ===============================
     else:
         return {"error": f"Invalid task: {task}"}
 
