@@ -91,7 +91,7 @@ def handler(job):
             wav = model.generate(
                 text=text,
                 temperature=data.get("temperature", 0.8),
-                cfg_weight=data.get("cfg_weight", 1.05),
+                cfg_weight=data.get("cfg_weight", 0.5),
             )
 
         # Normalize safely
