@@ -18,7 +18,7 @@ def load_model():
         print("[RunPod] Model loaded")
     return MODEL
 
-
+# some changes
 def handler(job):
     data = job["input"]
     task = data.get("task")
